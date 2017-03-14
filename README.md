@@ -19,31 +19,28 @@ To extract all EMS Refresh timings from the log file, use: ```ruby ems_refresh_t
 ```
 ...
 ---
-Worker PID:             13511
-Message ID:             1000001052310
-Message fetch time:     2017-01-30T02:25:04.246658
-Message time in queue:  24.334545641 seconds
-Provider:               Vmware::InfraManager
-EMS Name:               vCenter_1
+Worker PID:             10983
+Message ID:             973989
+Message fetch time:     2017-03-14T12:32:04.483229
+Message time in queue:  11.484443614 seconds
+Provider:               Redhat::InfraManager
+EMS Name:               RHEV
 Refresh type:           targeted
-Refresh targets:        Vm: 3
-Refresh start time:     2017-01-30T02:25:04.265822
+Refresh targets:        Vm: 1
+Refresh start time:     2017-03-14T12:32:04.492652
 Refresh timings:
   server_dequeue:                      0.000000 seconds
-  get_ems_data:                        0.061364 seconds
-  get_vc_data:                         4.996368 seconds
-  filter_vc_data:                      0.004898 seconds
-  get_vc_data_host_scsi:               6.212592 seconds
-  collect_inventory_for_targets:       11.277390 seconds
-  parse_vc_data:                       0.036231 seconds
-  parse_targeted_inventory:            0.037020 seconds
-  db_save_inventory:                   13.222092 seconds
-  save_inventory:                      13.222124 seconds
-  ems_refresh:                         24.537317 seconds
-Refresh end time:       2017-01-30T02:25:28.803480
-Message delivered time: 2017-01-30T02:25:29.397469
+  fetch_all:                           0.000000 seconds
+  collect_inventory_for_targets:       0.659348 seconds
+  parse_inventory:                     0.000335 seconds
+  parse_targeted_inventory:            0.000405 seconds
+  save_inventory:                      0.396400 seconds
+  ems_refresh:                         1.056764 seconds
+  fetch_vm_data:                       0.359215 seconds
+Refresh end time:       2017-03-14T12:32:05.549679
+Message delivered time: 2017-03-14T12:32:05.750432
 Message state:          ok
-Message delivered in:   25.150677484 seconds
+Message delivered in:   1.266935906 seconds
 ---
 ...
 ```
@@ -89,12 +86,12 @@ To extract all C&U hourly rollup timings from the log file, use: ``` ruby hourly
 ...
 ---
 Worker PID:                    14717
-Message ID:                    1000000936496
+Message ID:                    936496
 Message fetch time:            2017-01-29T04:24:11.456480
 Message time in queue:         6.088957682 seconds
 Rollup processing start time:  2017-01-29T04:24:11.463422
 Object Type:                   ManageIQ::Providers::Vmware::InfraManager::Vm
-Object Name:                   VERD545
+Object Name:                   wood545
 Time:                          2017-01-29T02:00:00Z
 Rollup timings:
   server_dequeue:                      0.000000
@@ -119,12 +116,12 @@ To extract all C&U daily rollup timings from the log file, use: ``` ruby daily_p
 ...
 ---
 Worker PID:                    10550
-Message ID:                    1000000924629
+Message ID:                    924629
 Message fetch time:            2017-01-30T01:01:01.302901
 Message time in queue:         82783.027900505 seconds
 Rollup processing start time:  2017-01-30T01:01:01.306173
 Object Type:                   ManageIQ::Providers::Vmware::InfraManager::Vm
-Object Name:                   VERD118
+Object Name:                   wood118
 Time:                          2017-01-29T00:00:00Z
 Rollup timings:
   server_dequeue:                      0.000000
