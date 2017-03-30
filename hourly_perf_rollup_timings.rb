@@ -127,7 +127,7 @@ begin
   
   parser = OptionParser.new do|opts|
     opts.banner = "Usage: hourly_perf_rollup_timings.rb [options]"
-    opts.on('-f', '--inputfile filename', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
+    opts.on('-i', '--inputfile filename', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
       options[:inputfile] = inputfile;
     end
     opts.on('-o', '--outputfile outputfile', 'Full file path to optional output file') do |outputfile|

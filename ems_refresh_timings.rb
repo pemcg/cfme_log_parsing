@@ -201,7 +201,7 @@ begin
   options = {:inputfile => nil, :outputfile => nil}
   
   parser = OptionParser.new do|opts|
-    opts.banner = "Usage: perf_process_timings.rb [options]"
+    opts.banner = "Usage: ems_refresh_timings.rb [options]"
     opts.on('-i', '--inputfile inputfile', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
       options[:inputfile] = inputfile;
     end
