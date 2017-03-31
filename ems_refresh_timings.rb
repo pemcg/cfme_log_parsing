@@ -1,25 +1,46 @@
 require 'optparse'
 
-def get_timing_headers (workers)
-
-  headings = {}
-  sym_to_header = lambda{|sym| sym.to_s.split(/_/).each {|word| sprintf("%s", "#{word.capitalize!} ")}.join " "}
-  workers.each do |pid, messages|
-    idx = 0
-    messages.each do |refresh|
-      timings = eval(refresh[:timings]) if @timings_re.match(refresh[:timings])
-      timings.keys.each do |key|
-        headings[key] = sym_to_header.call(key) unless headings.has_key?(key)
-      end
+def delta_timings(current_timings, last_timings)
+  new_timings = {}
+  current_timings.each do |metric, current_value|
+    if /^num_.*/.match(metric)
+      new_timings[metric] = current_value
+    else
+      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : current_value
     end
   end
-  headings
+  new_timings
 end
 
+def put_timings(o, timings)
+  unless timings.nil?
+    timings.keys.each do |metric|
+      next if /total_time/.match(metric)
+      format = /^num_.*/.match(metric) ? "%-36s %5.6f" : "%-36s %5.6f seconds"
+      o.puts "  #{sprintf(format, "#{metric}:", timings[metric])}" unless timings[metric].zero?
+    end
+    # print total_time last in each section
+    if timings.has_key?(:total_time)
+      o.puts "  #{sprintf("%-36s %5.6f seconds", "total_time:", timings[:total_time])}" unless timings[:total_time].zero?
+    end
+  end
+end
+
+def update_timings(last_timings, current_timings)
+  updated_timings = last_timings
+  current_timings.each do |metric, timing|
+    updated_timings[metric] = timing
+  end
+  updated_timings
+end
 
 def stats (workers, options)
 
-  timimgs = {}
+  refresh_counters = [:ems_refresh,:collect_inventory_for_targets,:parse_targeted_inventory,:save_inventory,
+                      :parse_legacy_inventory,:get_ems_data,:get_vc_data,:get_vc_data_ems_customization_spec,
+                      :filter_vc_data,:get_vc_data_host_scsi,:parse_vc_data,:db_save_inventory,:fetch_host_data,
+                      :fetch_vm_data,:fetch_all,:parse_inventory,:total_time]
+  non_refresh_counters = [:server_dequeue]
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -28,7 +49,7 @@ def stats (workers, options)
   end
 
   workers.each do |pid, messages|
-    idx = 0
+    last_timings = {}
     messages.each do |refresh|
       o.puts "---"
       o.puts "Worker PID:             #{pid}"
@@ -49,19 +70,15 @@ def stats (workers, options)
       o.puts "Refresh start time:     #{refresh[:start_time]}"
       o.puts "Refresh timings:"
       timings = eval(refresh[:timings]) if @timings_re.match(refresh[:timings])
-      # Fudge for https://bugzilla.redhat.com/show_bug.cgi?id=1424716
-      previous_timings = {}
-      unless idx.zero?
-        previous_timings = eval(messages[idx - 1][:timings]) if @timings_re.match(messages[idx - 1][:timings])
-      end
       unless timings.nil?
-        timings.keys.each do |metric|
-          if previous_timings.has_key?(metric)
-            o.puts "  #{sprintf("%-36s %5.6f seconds", "#{metric}:", timings[metric] - previous_timings[metric])}"
-          else
-            o.puts "  #{sprintf("%-36s %5.6f seconds", "#{metric}:", timings[metric])}"
-          end
+        if (timings.keys & (non_refresh_counters)).any?
+          # Need to delete the erroneous counters then subtract previous counters from the remainder (https://bugzilla.redhat.com/show_bug.cgi?id=1424716)
+          timings.delete_if { |key, _| !refresh_counters.include?(key) }
+          put_timings(o, delta_timings(timings,last_timings))
+        else
+          put_timings(o, timings)
         end
+        last_timings = update_timings(last_timings, timings)
       end
       o.puts "Refresh end time:       #{refresh[:end_time]}"
       o.puts "Message delivered time: #{refresh[:message_delivered_time]}"
@@ -69,7 +86,6 @@ def stats (workers, options)
       o.puts "Message delivered in:   #{refresh[:message_delivered_in]} seconds"
       o.puts "---"
       o.puts ""
-      idx += 1
     end
   end
 end

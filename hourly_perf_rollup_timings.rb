@@ -1,8 +1,43 @@
 require 'optparse'
 
-def stats (workers, options)
+def delta_timings(current_timings, last_timings)
+  new_timings = {}
+  current_timings.each do |metric, current_value|
+    if /^num_.*/.match(metric)
+      new_timings[metric] = current_value
+    else
+      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : 0
+    end
+  end
+  new_timings
+end
 
-  timimgs = {}
+def put_timings(o, timings)
+  unless timings.nil?
+    timings.keys.each do |metric|
+      next if /total_time/.match(metric)
+      format = /^num_.*/.match(metric) ? "%-36s %5.6f" : "%-36s %5.6f seconds"
+      o.puts "  #{sprintf(format, "#{metric}:", timings[metric])}" unless timings[metric].zero?
+    end
+    # print total_time last in each section
+    if timings.has_key?(:total_time)
+      o.puts "  #{sprintf("%-36s %5.6f seconds", "total_time:", timings[:total_time])}" unless timings[:total_time].zero?
+    end
+  end
+end
+
+def update_timings(last_timings, current_timings)
+  updated_timings = last_timings
+  current_timings.each do |metric, timing|
+    updated_timings[metric] = timing
+  end
+  updated_timings
+end
+
+def stats (workers, options)
+  
+  non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch]
+  rollup_counters     = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:process_bottleneck,:total_time]
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -11,7 +46,7 @@ def stats (workers, options)
   end
 
   workers.each do |pid, messages|
-    idx = 0
+    last_timings = {}
     messages.each do |rollup|
       o.puts "---"
       o.puts "Worker PID:                    #{pid}"
@@ -23,20 +58,16 @@ def stats (workers, options)
       o.puts "Object Name:                   #{rollup[:obj_name]}"
       o.puts "Time:                          #{rollup[:time]}"
       o.puts "Rollup timings:"
-      timings = eval(rollup[:timings]) if @timings_re.match(rollup[:timings])
-      # Fudge for https://bugzilla.redhat.com/show_bug.cgi?id=1424716
-      previous_timings = {}
-      unless idx.zero?
-        previous_timings = eval(messages[idx - 1][:timings]) if @timings_re.match(messages[idx - 1][:timings])
-      end
-      unless timings.nil?
-        timings.keys.each do |metric|
-          if previous_timings.has_key?(metric) && /^num_.*/.match(metric).nil?
-            o.puts "  #{sprintf("%-36s %5.6f", "#{metric}:", timings[metric] - previous_timings[metric])}"
-          else
-            o.puts "  #{sprintf("%-36s %5.6f", "#{metric}:", timings[metric])}"
-          end
+      rollup_timings = eval(rollup[:timings]) if @timings_re.match(rollup[:timings])
+      unless rollup_timings.nil?
+        if (rollup_timings.keys & (non_rollup_counters)).any?
+          # Need to delete the erroneous counters then subtract previous counters from the remainder (https://bugzilla.redhat.com/show_bug.cgi?id=1424716)
+          rollup_timings.delete_if { |key, _| !rollup_counters.include?(key) }
+          put_timings(o, delta_timings(rollup_timings,last_timings))
+        else
+          put_timings(o, rollup_timings)
         end
+        last_timings = update_timings(last_timings, rollup_timings)
       end
       o.puts "Rollup processing end time:    #{rollup[:end_time]}"
       o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
@@ -44,7 +75,6 @@ def stats (workers, options)
       o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
       o.puts "---"
       o.puts ""
-      idx += 1
     end
   end
 end
@@ -74,9 +104,9 @@ get_message_via_drb_re = %r{
                           \ Dequeued\ in:\ \[(?<dequeued_in>.+)\]\ seconds$
                             }x
 
-# [----] I, [2016-12-13T03:56:52.411916 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3-03-04.vi.eb-grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...
+# [----] I, [2016-12-13T03:56:52.411916 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3.vi.grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...
 # [----] I, [2017-01-29T12:00:45.773098 #27858:66b14c]  INFO -- : MIQ(MiqEnterprise#perf_rollup) [hourly] Rollup for MiqEnterprise name: [Enterprise], id: [1000000000001] for time: [2017-01-29T10:00:00Z]...
-# [----] I, [2017-01-29T12:00:45.775557 #23910:66b14c]  INFO -- : MIQ(EmsCluster#perf_rollup) [hourly] Rollup for EmsCluster name: [Cluster Condorcet AMD], id: [1000000000003] for time: [2017-01-29T10:00:00Z]...
+# [----] I, [2017-01-29T12:00:45.775557 #23910:66b14c]  INFO -- : MIQ(EmsCluster#perf_rollup) [hourly] Rollup for EmsCluster name: [Cluster AMD], id: [1000000000003] for time: [2017-01-29T10:00:00Z]...
 # [----] I, [2017-01-29T04:01:18.224366 #14717:66b14c]  INFO -- : MIQ(MiqRegion#perf_rollup) [hourly] Rollup for MiqRegion name: [Region 1], id: [1000000000001] for time: [2017-01-29T02:00:00Z]...
 
 perf_rollup_start_re = %r{
@@ -88,7 +118,7 @@ perf_rollup_start_re = %r{
                           \ for\ time:\ \[(?<time>.+)\]\.\.\.$
                           }x
 
-# [----] I, [2016-12-13T03:56:52.847443 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3-03-04.vi.eb-grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...Complete - Timings: {:server_dequeue=>0.0039708614349365234, :db_find_prev_perf=>1.322969675064087, :rollup_perfs=>9.462254285812378, :db_update_perf=>3.2071571350097656, :process_perfs_tag=>70.51743388175964, :process_bottleneck=>10.498109817504883, :total_time=>97.70416975021362}
+# [----] I, [2016-12-13T03:56:52.847443 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3.vi.grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...Complete - Timings: {:server_dequeue=>0.0039708614349365234, :db_find_prev_perf=>1.322969675064087, :rollup_perfs=>9.462254285812378, :db_update_perf=>3.2071571350097656, :process_perfs_tag=>70.51743388175964, :process_bottleneck=>10.498109817504883, :total_time=>97.70416975021362}
 # [----] I, [2017-02-21T10:00:46.693621 #20238:33d13c]  INFO -- : MIQ(MiqRegion#perf_rollup) [hourly] Rollup for MiqRegion name: [Region 0], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.722290515899658, :rollup_perfs=>189.67185926437378, :db_update_perf=>156.79570960998535, :process_perfs_tag=>1.1467986106872559, :process_bottleneck=>169.6373643875122, :total_time=>606.1658205986023, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
 # [----] I, [2017-02-21T10:00:43.502162 #20238:33d13c]  INFO -- : MIQ(MiqEnterprise#perf_rollup) [hourly] Rollup for MiqEnterprise name: [Enterprise], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.71651792526245, :rollup_perfs=>189.6120822429657, :db_update_perf=>156.78874564170837, :process_perfs_tag=>1.1466748714447021, :process_bottleneck=>169.6322898864746, :total_time=>606.0528314113617, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
 # [----] I, [2017-02-21T10:00:42.076955 #20238:33d13c]  INFO -- : MIQ(EmsCluster#perf_rollup) [hourly] Rollup for EmsCluster name: [Default], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.71201252937317, :rollup_perfs=>189.58252334594727, :db_update_perf=>156.7819893360138, :process_perfs_tag=>1.146547555923462, :process_bottleneck=>168.30106329917908, :total_time=>604.6718921661377, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
@@ -127,7 +157,7 @@ begin
   
   parser = OptionParser.new do|opts|
     opts.banner = "Usage: hourly_perf_rollup_timings.rb [options]"
-    opts.on('-f', '--inputfile filename', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
+    opts.on('-i', '--inputfile filename', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
       options[:inputfile] = inputfile;
     end
     opts.on('-o', '--outputfile outputfile', 'Full file path to optional output file') do |outputfile|
