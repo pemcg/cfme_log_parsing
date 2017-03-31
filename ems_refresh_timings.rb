@@ -15,13 +15,13 @@ end
 def put_timings(o, timings)
   unless timings.nil?
     timings.keys.each do |metric|
-      next if /total_time/.match(metric)
+      next if /ems_refresh/.match(metric)
       format = /^num_.*/.match(metric) ? "%-36s %5.6f" : "%-36s %5.6f seconds"
       o.puts "  #{sprintf(format, "#{metric}:", timings[metric])}" unless timings[metric].zero?
     end
-    # print total_time last in each section
-    if timings.has_key?(:total_time)
-      o.puts "  #{sprintf("%-36s %5.6f seconds", "total_time:", timings[:total_time])}" unless timings[:total_time].zero?
+    # print ems_refresh last in each section
+    if timings.has_key?(:ems_refresh)
+      o.puts "  #{sprintf("%-36s %5.6f seconds", "ems_refresh:", timings[:ems_refresh])}" unless timings[:ems_refresh].zero?
     end
   end
 end
@@ -217,7 +217,7 @@ begin
   options = {:inputfile => nil, :outputfile => nil}
   
   parser = OptionParser.new do|opts|
-    opts.banner = "Usage: perf_process_timings.rb [options]"
+    opts.banner = "Usage: ems_refresh_timings.rb [options]"
     opts.on('-i', '--inputfile inputfile', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
       options[:inputfile] = inputfile;
     end

@@ -19,28 +19,26 @@ To extract all EMS Refresh timings from the log file, use: ```ruby ems_refresh_t
 ```
 ...
 ---
-Worker PID:             10983
-Message ID:             973989
-Message fetch time:     2017-03-14T12:32:04.483229
-Message time in queue:  11.484443614 seconds
+Worker PID:             4604
+Message ID:             1154740
+Message fetch time:     2017-03-31T08:54:07.618911
+Message time in queue:  11.581588432 seconds
 Provider:               Redhat::InfraManager
 EMS Name:               RHEV
 Refresh type:           targeted
 Refresh targets:        Vm: 1
-Refresh start time:     2017-03-14T12:32:04.492652
+Refresh start time:     2017-03-31T08:54:07.629444
 Refresh timings:
-  server_dequeue:                      0.000000 seconds
-  fetch_all:                           0.000000 seconds
-  collect_inventory_for_targets:       0.659348 seconds
-  parse_inventory:                     0.000335 seconds
-  parse_targeted_inventory:            0.000405 seconds
-  save_inventory:                      0.396400 seconds
-  ems_refresh:                         1.056764 seconds
-  fetch_vm_data:                       0.359215 seconds
-Refresh end time:       2017-03-14T12:32:05.549679
-Message delivered time: 2017-03-14T12:32:05.750432
+  collect_inventory_for_targets:       0.768543 seconds
+  parse_inventory:                     0.000432 seconds
+  parse_targeted_inventory:            0.000510 seconds
+  save_inventory:                      0.417365 seconds
+  fetch_vm_data:                       0.448297 seconds
+  ems_refresh:                         1.186976 seconds
+Refresh end time:       2017-03-31T08:54:08.816679
+Message delivered time: 2017-03-31T08:54:08.866894
 Message state:          ok
-Message delivered in:   1.266935906 seconds
+Message delivered in:   1.247759164 seconds
 ---
 ...
 ```
