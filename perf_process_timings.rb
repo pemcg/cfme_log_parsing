@@ -6,7 +6,7 @@ def delta_timings(current_timings, last_timings)
     if /^num_.*/.match(metric)
       new_timings[metric] = current_value
     else
-      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : current_value
+      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : 0
     end
   end
   new_timings
@@ -38,19 +38,20 @@ def stats (workers, options)
   # Full counters: :capture_state,:total_time,:vim_connect,:capture_intervals,:capture_counters,:build_query_params,
   #                :vim_execute_time,:perf_processing,:rhevm_connect,:collect_data,:connect,:capture_counter_values
   # Unique counters:
-  perf_capture_counters    = [:vim_connect,:capture_intervals,:capture_counters,
-                             :build_query_params,:vim_execute_time,:perf_processing,:rhevm_connect,
-                             :collect_data,:connect,:capture_counter_values,:num_vim_queries,:num_vim_trips]
+  unique_perf_capture_counters    = [:vim_connect,:capture_intervals,:capture_counters,
+                                     :build_query_params,:vim_execute_time,:perf_processing,:rhevm_connect,
+                                     :collect_data,:connect,:capture_counter_values,:num_vim_queries,:num_vim_trips]
   
   # Full counters: :db_find_storage_files,:capture_state,:init_attrs,:db_find_prev_perfs,:process_perfs,
   #                :process_perfs_tag,:process_bottleneck,:total_time
   # Unique counters:
-  storage_capture_counters = [:db_find_storage_files,:init_attrs,:process_bottleneck]
+  unique_storage_capture_counters = [:db_find_storage_files,:init_attrs,:process_bottleneck]
   
   # Full counters: :process_counter_values,:db_find_prev_perfs,:process_perfs,:process_perfs_db,
   #                :process_perfs_tag,:add_missing_intervals
   # Unique counters:
-  process_counters         = [:process_counter_values,:process_perfs_db,:add_missing_intervals]
+  unique_process_counters         = [:process_counter_values,:process_perfs_db,:add_missing_intervals]
+  other_counters                  = [:server_dequeue,:heartbeat,:server_monitor,:log_active_servers,:worker_monitor,:worker_dequeue]
   
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -82,11 +83,10 @@ def stats (workers, options)
         o.puts "Capture timings:"
         perf_capture_timings = eval(perf_process[:capture_timings]) if @timings_re.match(perf_process[:capture_timings])
         unless perf_capture_timings.nil?
-          if (perf_capture_timings.keys & (storage_capture_counters + process_counters)).any?
-            # Need to delete the erroneous counters then subtract previous counters from the remainder (https://bugzilla.redhat.com/show_bug.cgi?id=1424716)
-            perf_capture_counters.push(:total_time, :capture_state)
+          if (perf_capture_timings.keys & (unique_storage_capture_counters + unique_process_counters + other_counters)).any?
+            perf_capture_counters = unique_perf_capture_counters + [:total_time, :capture_state]
             perf_capture_timings.delete_if { |key, _| !perf_capture_counters.include?(key) }
-            put_timings(o, delta_timings(perf_capture_timings,last_timings))
+              put_timings(o, delta_timings(perf_capture_timings,last_timings))
           else
             put_timings(o, perf_capture_timings)
           end
@@ -96,9 +96,9 @@ def stats (workers, options)
         o.puts "Capture timings:"
         storage_capture_timings = eval(perf_process[:capture_timings]) if @timings_re.match(perf_process[:capture_timings])
         unless storage_capture_timings.nil?
-          if (storage_capture_timings.keys & (perf_capture_counters + process_counters)).any?
+          if (storage_capture_timings.keys & (unique_perf_capture_counters + unique_process_counters + other_counters)).any?
             # Need to delete the erroneous counters then subtract previous counters from the remainder (https://bugzilla.redhat.com/show_bug.cgi?id=1424716)
-            storage_capture_counters.push(:total_time, :process_perfs, :db_find_prev_perfs, :process_perfs_tag, :capture_state)
+            storage_capture_counters = unique_storage_capture_counters + [:total_time, :process_perfs, :db_find_prev_perfs, :process_perfs_tag, :capture_state]
             storage_capture_timings.delete_if { |key, _| !storage_capture_counters.include?(key) }
             put_timings(o, delta_timings(storage_capture_timings,last_timings))
           else
@@ -106,6 +106,7 @@ def stats (workers, options)
           end
           last_timings = update_timings(last_timings, storage_capture_timings)
         end
+        o.puts "Metrics processing end time:   #{perf_process[:end_time]}"
       when 'collect_error'
         o.puts "Capture timings at time of error:"
         error_timings = eval(perf_process[:error_timings]) if @timings_re.match(perf_process[:error_timings])
@@ -119,11 +120,11 @@ def stats (workers, options)
         o.puts "Process timings:"
         process_timings = eval(perf_process[:process_timings]) if @timings_re.match(perf_process[:process_timings])
         unless process_timings.nil?
-          if (process_timings.keys & (perf_capture_counters + storage_capture_counters)).any?
+          if (process_timings.keys & (unique_perf_capture_counters + unique_storage_capture_counters + other_counters)).any?
             # Need to delete the erroneous counters then subtract previous counters from the remainder (https://bugzilla.redhat.com/show_bug.cgi?id=1424716)
-            process_counters.push(:total_time, :process_perfs, :process_perfs_tag, :db_find_prev_perfs)
+            process_counters = unique_process_counters + [:total_time, :process_perfs, :process_perfs_tag, :db_find_prev_perfs]
             process_timings.delete_if { |key, _| !process_counters.include?(key) }
-            put_timings(o, delta_timings(process_timings,last_timings))
+              put_timings(o, delta_timings(process_timings,last_timings))
           else
             put_timings(o, process_timings)
           end
@@ -369,6 +370,7 @@ begin
       current = workers[storage_capture_complete[:pid]].length - 1 rescue next
       workers[storage_capture_complete[:pid]][current][:capture_state] = 'storage_capture_complete'
       workers[storage_capture_complete[:pid]][current][:capture_timings] = storage_capture_complete[:timings]
+      workers[storage_capture_complete[:pid]][current][:end_time] = storage_capture_complete[:timestamp]
       next
     end
 

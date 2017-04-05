@@ -36,8 +36,9 @@ end
 
 def stats (workers, options)
   
-  non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch]
-  rollup_counters     = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:process_bottleneck,:total_time]
+  common_non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch,:heartbeat,:server_monitor,:log_active_servers,:worker_monitor,:worker_dequeue]
+  hourly_rollup_counters = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time,:process_bottleneck]
+  daily_rollup_counters  = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time]
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -56,6 +57,14 @@ def stats (workers, options)
       o.puts "Rollup processing start time:  #{rollup[:start_time]}"
       o.puts "Object Type:                   #{rollup[:obj_type]}"
       o.puts "Object Name:                   #{rollup[:obj_name]}"
+      o.puts "Rollup Type:                   #{rollup[:type]}"
+      if rollup[:type] == "daily"
+        rollup_counters = daily_rollup_counters
+        non_rollup_counters = common_non_rollup_counters + [:process_bottleneck]
+      else
+        rollup_counters = hourly_rollup_counters
+        non_rollup_counters = common_non_rollup_counters
+      end
       o.puts "Time:                          #{rollup[:time]}"
       o.puts "Rollup timings:"
       rollup_timings = eval(rollup[:timings]) if @timings_re.match(rollup[:timings])
@@ -104,11 +113,40 @@ get_message_via_drb_re = %r{
                           \ Dequeued\ in:\ \[(?<dequeued_in>.+)\]\ seconds$
                             }x
 
+# [----] I, [2016-12-13T03:56:52.411916 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3.vi.grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...
+# [----] I, [2017-01-29T12:00:45.773098 #27858:66b14c]  INFO -- : MIQ(MiqEnterprise#perf_rollup) [hourly] Rollup for MiqEnterprise name: [Enterprise], id: [1000000000001] for time: [2017-01-29T10:00:00Z]...
+# [----] I, [2017-01-29T12:00:45.775557 #23910:66b14c]  INFO -- : MIQ(EmsCluster#perf_rollup) [hourly] Rollup for EmsCluster name: [Cluster AMD], id: [1000000000003] for time: [2017-01-29T10:00:00Z]...
+# [----] I, [2017-01-29T04:01:18.224366 #14717:66b14c]  INFO -- : MIQ(MiqRegion#perf_rollup) [hourly] Rollup for MiqRegion name: [Region 1], id: [1000000000001] for time: [2017-01-29T02:00:00Z]...
+
+hourly_perf_rollup_start_re = %r{
+                          ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
+                          \ \#(?<pid>\h+):\h+\]
+                          \ .*perf_rollup\)\ \[hourly\]\ Rollup\ for\ (?<obj_type>.+)
+                          \ name:\ \[(?<obj_name>.+?)\],
+                          \ id:\ \[(?<obj_id>\d+)\]
+                          \ for\ time:\ \[(?<time>.+)\]\.\.\.$
+                          }x
+
+# [----] I, [2016-12-13T03:56:52.847443 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3.vi.grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...Complete - Timings: {:server_dequeue=>0.0039708614349365234, :db_find_prev_perf=>1.322969675064087, :rollup_perfs=>9.462254285812378, :db_update_perf=>3.2071571350097656, :process_perfs_tag=>70.51743388175964, :process_bottleneck=>10.498109817504883, :total_time=>97.70416975021362}
+# [----] I, [2017-02-21T10:00:46.693621 #20238:33d13c]  INFO -- : MIQ(MiqRegion#perf_rollup) [hourly] Rollup for MiqRegion name: [Region 0], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.722290515899658, :rollup_perfs=>189.67185926437378, :db_update_perf=>156.79570960998535, :process_perfs_tag=>1.1467986106872559, :process_bottleneck=>169.6373643875122, :total_time=>606.1658205986023, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
+# [----] I, [2017-02-21T10:00:43.502162 #20238:33d13c]  INFO -- : MIQ(MiqEnterprise#perf_rollup) [hourly] Rollup for MiqEnterprise name: [Enterprise], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.71651792526245, :rollup_perfs=>189.6120822429657, :db_update_perf=>156.78874564170837, :process_perfs_tag=>1.1466748714447021, :process_bottleneck=>169.6322898864746, :total_time=>606.0528314113617, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
+# [----] I, [2017-02-21T10:00:42.076955 #20238:33d13c]  INFO -- : MIQ(EmsCluster#perf_rollup) [hourly] Rollup for EmsCluster name: [Default], id: [1] for time: [2017-02-21T09:00:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.71201252937317, :rollup_perfs=>189.58252334594727, :db_update_perf=>156.7819893360138, :process_perfs_tag=>1.146547555923462, :process_bottleneck=>168.30106329917908, :total_time=>604.6718921661377, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
+
+hourly_perf_rollup_complete_re = %r{
+                            ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
+                            \ \#(?<pid>\h+):\h+\]
+                            \ .*perf_rollup\)\ \[hourly\]\ Rollup\ for\ (?<obj_type>.+)
+                            \ name:\ \[(?<obj_name>.+?)\],
+                            \ id:\ \[(?<obj_id>\d+)\]
+                            \ for\ time:\ \[(?<time>.+)\]\.\.\.Complete\ -
+                            \ Timings: (?<timings>.*$)
+                            }x
+
 # [----] I, [2017-01-30T01:06:58.482344 #15698:66b14c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [daily] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [sgop041.go.net], id: [1000000000006] for time: [2017-01-29T00:00:00Z]...
 # [----] I, [2017-01-30T01:02:59.948249 #15698:66b14c]  INFO -- : MIQ(MiqEnterprise#perf_rollup) [daily] Rollup for MiqEnterprise name: [Enterprise], id: [1000000000001] for time: [2017-01-29T00:00:00Z]...
 # [----] I, [2017-01-30T01:02:41.392970 #10550:66b14c]  INFO -- : MIQ(EmsCluster#perf_rollup) [daily] Rollup for EmsCluster name: [Cluster Intel], id: [1000000000004] for time: [2017-01-29T00:00:00Z]...
 
-perf_rollup_start_re = %r{
+daily_perf_rollup_start_re = %r{
                           ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
                           \ \#(?<pid>\h+):\h+\]
                           \ .*perf_rollup\)\ \[daily\]\ Rollup\ for\ (?<obj_type>.+)
@@ -120,7 +158,7 @@ perf_rollup_start_re = %r{
 # [----] I, [2017-01-30T01:02:41.324855 #15698:66b14c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::Vm#perf_rollup) [daily] Rollup for ManageIQ::Providers::Vmware::InfraManager::Vm name: [VERD513], id: [1000000000405] for time: [2017-01-29T00:00:00Z]...Complete - Timings: {:server_dequeue=>0.0035924911499023438, :db_find_prev_perf=>3.603140115737915, :rollup_perfs=>52.784393310546875, :db_update_perf=>23.408877849578857, :process_perfs_tag=>13.1074960231781, :process_bottleneck=>3.1167943477630615, :total_time=>109.68095922470093, :purge_metrics=>2.397167205810547}
 # [----] I, [2017-01-30T01:02:41.588790 #10550:66b14c]  INFO -- : MIQ(EmsCluster#perf_rollup) [daily] Rollup for EmsCluster name: [Cluster Intel], id: [1000000000004] for time: [2017-01-29T00:00:00Z]...Complete - Timings: {:server_dequeue=>0.011353015899658203, :db_find_prev_perf=>7.0114099979400635, :rollup_perfs=>161.78631830215454, :db_update_perf=>43.86720824241638, :process_perfs_tag=>127.168386220932, :process_bottleneck=>20.68321990966797, :total_time=>390.07264614105225, :purge_metrics=>3.1448822021484375}
 
-perf_rollup_complete_re = %r{
+daily_perf_rollup_complete_re = %r{
                             ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
                             \ \#(?<pid>\h+):\h+\]
                             \ .*perf_rollup\)\ \[daily\]\ Rollup\ for\ (?<obj_type>.+)
@@ -129,7 +167,6 @@ perf_rollup_complete_re = %r{
                             \ for\ time:\ \[(?<time>.+)\]\.\.\.Complete\ -
                             \ Timings: (?<timings>.*$)
                             }x
-
 
 # [----] I, [2016-12-13T03:43:24.621330 #21612:11e598c]  INFO -- : MIQ(MiqQueue#delivered) Message id: [1000032162564], State: [ok], Delivered in [3.849833806] seconds
 
@@ -153,7 +190,7 @@ begin
   options = {:inputfile => nil, :outputfile => nil}
   
   parser = OptionParser.new do|opts|
-    opts.banner = "Usage: daily_perf_rollup_timings.rb [options]"
+    opts.banner = "Usage: hourly_perf_rollup_timings.rb [options]"
     opts.on('-i', '--inputfile filename', 'Full file path to evm.log (if not /var/www/miq/vmdb/log/evm.log)') do |inputfile|
       options[:inputfile] = inputfile;
     end
@@ -187,36 +224,71 @@ begin
       next
     end
 
-    started = perf_rollup_start_re.match(line)
-    if started
+    hourly_started = hourly_perf_rollup_start_re.match(line)
+    if hourly_started
       counter += 1
-      print "Found #{counter} daily rollups\r"
-      workers[started[:pid]] = [] unless workers.has_key?(started[:pid])
-      workers[started[:pid]] << {:capture_state  => 'rollup_started', 
-                                     :obj_type   => started[:obj_type],
-                                     :obj_name   => started[:obj_name],
-                                     :obj_id     => started[:obj_id],
-                                     :time       => started[:time],
-                                     :start_time => started[:timestamp]}
-      current = workers[started[:pid]].length - 1
-      if messages.has_key?(started[:pid])
-        workers[started[:pid]][current][:message_id] = messages[started[:pid]][:message_id]
-        workers[started[:pid]][current][:message_time] = messages[started[:pid]][:timestamp]
-        workers[started[:pid]][current][:message_dequeue_time] = messages[started[:pid]][:dequeued_in]
-        messages.delete(started[:pid])
+      print "Found #{counter} rollups\r"
+      workers[hourly_started[:pid]] = [] unless workers.has_key?(hourly_started[:pid])
+      workers[hourly_started[:pid]] << {:state      => 'hourly_rollup_started', 
+                                        :type       => 'hourly',
+                                        :obj_type   => hourly_started[:obj_type],
+                                        :obj_name   => hourly_started[:obj_name],
+                                        :obj_id     => hourly_started[:obj_id],
+                                        :time       => hourly_started[:time],
+                                        :start_time => hourly_started[:timestamp]}
+      current = workers[hourly_started[:pid]].length - 1
+      if messages.has_key?(hourly_started[:pid])
+        workers[hourly_started[:pid]][current][:message_id] = messages[hourly_started[:pid]][:message_id]
+        workers[hourly_started[:pid]][current][:message_time] = messages[hourly_started[:pid]][:timestamp]
+        workers[hourly_started[:pid]][current][:message_dequeue_time] = messages[hourly_started[:pid]][:dequeued_in]
+        messages.delete(hourly_started[:pid])
       else
-        workers[started[:pid]][current][:message_time] = "No message found"
-        workers[started[:pid]][current][:message_dequeue_time] = ""
+        workers[hourly_started[:pid]][current][:message_time] = "No message found"
+        workers[hourly_started[:pid]][current][:message_dequeue_time] = ""
       end
       next
     end
 
-    completed = perf_rollup_complete_re.match(line)
-    if completed
-      current = workers[completed[:pid]].length - 1 rescue next
-      workers[completed[:pid]][current][:state]    = 'rollup_completed'
-      workers[completed[:pid]][current][:end_time] = completed[:timestamp]
-      workers[completed[:pid]][current][:timings]  = completed[:timings]
+    daily_started = daily_perf_rollup_start_re.match(line)
+    if daily_started
+      counter += 1
+      print "Found #{counter} rollups\r"
+      workers[daily_started[:pid]] = [] unless workers.has_key?(daily_started[:pid])
+      workers[daily_started[:pid]] << {:state      => 'daily_rollup_started',
+                                       :type       => 'daily',
+                                       :obj_type   => daily_started[:obj_type],
+                                       :obj_name   => daily_started[:obj_name],
+                                       :obj_id     => daily_started[:obj_id],
+                                       :time       => daily_started[:time],
+                                       :start_time => daily_started[:timestamp]}
+      current = workers[daily_started[:pid]].length - 1
+      if messages.has_key?(daily_started[:pid])
+        workers[daily_started[:pid]][current][:message_id] = messages[daily_started[:pid]][:message_id]
+        workers[daily_started[:pid]][current][:message_time] = messages[daily_started[:pid]][:timestamp]
+        workers[daily_started[:pid]][current][:message_dequeue_time] = messages[daily_started[:pid]][:dequeued_in]
+        messages.delete(daily_started[:pid])
+      else
+        workers[daily_started[:pid]][current][:message_time] = "No message found"
+        workers[daily_started[:pid]][current][:message_dequeue_time] = ""
+      end
+      next
+    end
+
+    hourly_completed = hourly_perf_rollup_complete_re.match(line)
+    if hourly_completed
+      current = workers[hourly_completed[:pid]].length - 1 rescue next
+      workers[hourly_completed[:pid]][current][:state]    = 'hourly_rollup_completed'
+      workers[hourly_completed[:pid]][current][:end_time] = hourly_completed[:timestamp]
+      workers[hourly_completed[:pid]][current][:timings]  = hourly_completed[:timings]
+      next
+    end
+
+    daily_completed = daily_perf_rollup_complete_re.match(line)
+    if daily_completed
+      current = workers[daily_completed[:pid]].length - 1 rescue next
+      workers[daily_completed[:pid]][current][:state]    = 'daily_rollup_completed'
+      workers[daily_completed[:pid]][current][:end_time] = daily_completed[:timestamp]
+      workers[daily_completed[:pid]][current][:timings]  = daily_completed[:timings]
       next
     end
 

@@ -36,8 +36,8 @@ end
 
 def stats (workers, options)
   
-  non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch]
-  rollup_counters     = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:process_bottleneck,:total_time]
+  non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch,:process_bottleneck]
+  rollup_counters     = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time]
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -50,9 +50,13 @@ def stats (workers, options)
     messages.each do |rollup|
       o.puts "---"
       o.puts "Worker PID:                    #{pid}"
-      o.puts "Message ID:                    #{rollup[:message_id]}"
-      o.puts "Message fetch time:            #{rollup[:message_time]}"
-      o.puts "Message time in queue:         #{rollup[:message_dequeue_time]} seconds"
+      if rollup[:first_rollup_for_message]
+        o.puts "Message ID:                    #{rollup[:message_id]} (new)"
+        o.puts "Message fetch time:            #{rollup[:message_time]}"
+        o.puts "Message time in queue:         #{rollup[:message_dequeue_time]} seconds"
+      else
+        o.puts "Message ID:                    #{rollup[:message_id]} (continued)"
+      end
       o.puts "Rollup processing start time:  #{rollup[:start_time]}"
       o.puts "Object Type:                   #{rollup[:obj_type]}"
       o.puts "Object Name:                   #{rollup[:obj_name]}"
@@ -70,9 +74,11 @@ def stats (workers, options)
         last_timings = update_timings(last_timings, rollup_timings)
       end
       o.puts "Rollup processing end time:    #{rollup[:end_time]}"
-      o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
-      o.puts "Message state:                 #{rollup[:message_state]}"
-      o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
+      if rollup[:last_rollup_for_message]
+        o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
+        o.puts "Message state:                 #{rollup[:message_state]}"
+        o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
+      end
       o.puts "---"
       o.puts ""
     end
@@ -180,7 +186,8 @@ begin
     if new_message
       messages[new_message[:pid]] = {:timestamp   => new_message[:timestamp], 
                                      :dequeued_in => new_message[:dequeued_in],
-                                     :message_id  => new_message[:message_id]}
+                                     :message_id  => new_message[:message_id],
+                                     :status      => 'new'}
       next
     end
 
@@ -197,10 +204,16 @@ begin
                                      :start_time => started[:timestamp]}
       current = workers[started[:pid]].length - 1
       if messages.has_key?(started[:pid])
+        if messages[started[:pid]][:status] == 'new'
+          workers[started[:pid]][current][:first_rollup_for_message] = true
+          workers[started[:pid]][current][:last_rollup_for_message] = false
+          messages[started[:pid]][:status] = ''
+        else
+          workers[started[:pid]][current][:first_rollup_for_message] = false
+        end
         workers[started[:pid]][current][:message_id] = messages[started[:pid]][:message_id]
         workers[started[:pid]][current][:message_time] = messages[started[:pid]][:timestamp]
         workers[started[:pid]][current][:message_dequeue_time] = messages[started[:pid]][:dequeued_in]
-        messages.delete(started[:pid])
       else
         workers[started[:pid]][current][:message_time] = "No message found"
         workers[started[:pid]][current][:message_dequeue_time] = ""
@@ -224,6 +237,7 @@ begin
         workers[message_delivered[:pid]][current][:message_delivered_time] = message_delivered[:timestamp]
         workers[message_delivered[:pid]][current][:message_state]          = message_delivered[:state]
         workers[message_delivered[:pid]][current][:message_delivered_in]   = message_delivered[:delivered_in]
+        workers[message_delivered[:pid]][current][:last_rollup_for_message] = true
       end
       next
     end
@@ -232,7 +246,6 @@ begin
 
 rescue => err
   puts "[#{err}]\n#{err.backtrace.join("\n")}"
-  # puts "#{perf_rollup_workers.inspect}"
   exit!
 end
 

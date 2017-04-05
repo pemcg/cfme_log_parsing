@@ -6,7 +6,7 @@ def delta_timings(current_timings, last_timings)
     if /^num_.*/.match(metric)
       new_timings[metric] = current_value
     else
-      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : current_value
+      new_timings[metric] = last_timings.has_key?(metric) ? current_value - last_timings[metric] : 0
     end
   end
   new_timings
@@ -40,7 +40,8 @@ def stats (workers, options)
                       :parse_legacy_inventory,:get_ems_data,:get_vc_data,:get_vc_data_ems_customization_spec,
                       :filter_vc_data,:get_vc_data_host_scsi,:parse_vc_data,:db_save_inventory,:fetch_host_data,
                       :fetch_vm_data,:fetch_all,:parse_inventory,:total_time]
-  non_refresh_counters = [:server_dequeue]
+  non_refresh_counters = [:server_dequeue,:heartbeat,:server_monitor,:log_active_servers,:worker_monitor,:worker_dequeue]
+
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')

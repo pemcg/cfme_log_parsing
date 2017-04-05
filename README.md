@@ -12,7 +12,7 @@ If the scripts are run with no arguments they will search for /var/www/miq/vmdb/
 
 The output for each action is wrapped with the timings of the corresponding message that triggered the action, so as to sanity-check the timings (the "Message delivered in" should be slightly more than the total action time).
 
-The first action printed often has incorrect timings (if there are no previous timing values to subtract), but subsequent actions should be correct.
+The scripts occasionally display incorrect timings (such as if the worker being monitored printed some earlier timings for a different operation that the script is not parsing), but most timings should be correct. The incorrect times are ususally obviously wrong.
 
 To extract all EMS Refresh timings from the log file, use: ```ruby ems_refresh_timings.rb -i evm.log```
 
@@ -78,62 +78,71 @@ Message delivered in:          3.371304091 seconds
 ...
 ```
 
-To extract all C&U hourly rollup timings from the log file, use: ``` ruby hourly_perf_rollup_timings.rb -i evm.log```
+To extract all C&U hourly and daily rollup timings from the log file, use: ``` ruby hourly_daily_perf_rollup_timings.rb -i evm.log```
 
 ```
 ...
 ---
-Worker PID:                    14717
-Message ID:                    936496
-Message fetch time:            2017-01-29T04:24:11.456480
-Message time in queue:         6.088957682 seconds
-Rollup processing start time:  2017-01-29T04:24:11.463422
+Worker PID:                    16198
+Message ID:                    1000000335412
+Message fetch time:            2017-01-25T03:22:37.165772
+Message time in queue:         11.752116964 seconds
+Rollup processing start time:  2017-01-25T03:22:37.181049
 Object Type:                   ManageIQ::Providers::Vmware::InfraManager::Vm
-Object Name:                   wood545
-Time:                          2017-01-29T02:00:00Z
+Object Name:                   PC002
+Rollup Type:                   hourly
+Time:                          2017-01-25T01:00:00Z
 Rollup timings:
-  server_dequeue:                      0.000000
-  server_monitor:                      0.000000
-  db_find_prev_perf:                   0.005566
-  rollup_perfs:                        0.126277
-  db_update_perf:                      0.026837
-  process_perfs_tag:                   0.000024
-  process_bottleneck:                  0.006419
-  total_time:                          0.196712
-Rollup processing end time:    2017-01-29T04:24:11.660251
-Message delivered time:        2017-01-29T04:24:11.660422
+  db_find_prev_perf:                   0.016205 seconds
+  rollup_perfs:                        0.154808 seconds
+  db_update_perf:                      0.049990 seconds
+  process_perfs_tag:                   0.000025 seconds
+  process_bottleneck:                  0.021531 seconds
+  total_time:                          0.360935 seconds
+Rollup processing end time:    2017-01-25T03:22:37.542135
+Message delivered time:        2017-01-25T03:22:37.542300
 Message state:                 ok
-Message delivered in:          0.203841732 seconds
+Message delivered in:          0.376313023 seconds
 ---
 ...
 ```
 
-To extract all C&U daily rollup timings from the log file, use: ``` ruby daily_perf_rollup_timings.rb -i evm.log```
+To extract all C&U realtime rollup timings from the log file, use: ``` ruby realtime_perf_rollup_timings.rb -i evm.log```. Note that several realtime rollups are dispatched by each message
 
 ```
 ...
 ---
-Worker PID:                    10550
-Message ID:                    924629
-Message fetch time:            2017-01-30T01:01:01.302901
-Message time in queue:         82783.027900505 seconds
-Rollup processing start time:  2017-01-30T01:01:01.306173
-Object Type:                   ManageIQ::Providers::Vmware::InfraManager::Vm
-Object Name:                   wood118
-Time:                          2017-01-29T00:00:00Z
+Worker PID:                    16198
+Message ID:                    1000000356693 (new)
+Message fetch time:            2017-01-25T07:40:46.870497
+Message time in queue:         13.718882354 seconds
+Rollup processing start time:  2017-01-25T07:40:46.872254
+Object Type:                   EmsCluster
+Object Name:                   Cluster 1
+Time:                          2017-01-25T06:40:20Z
 Rollup timings:
-  server_dequeue:                      0.000000
-  db_find_prev_perf:                   0.005237
-  rollup_perfs:                        0.111509
-  db_update_perf:                      0.035400
-  process_perfs_tag:                   0.000029
-  process_bottleneck:                  0.000000
-  total_time:                          0.152221
-  purge_metrics:                       0.000000
-Rollup processing end time:    2017-01-30T01:01:01.458519
-Message delivered time:        2017-01-30T01:01:01.458750
-Message state:                 ok
-Message delivered in:          0.155730881 seconds
+  db_find_prev_perf:                   0.007127 seconds
+  rollup_perfs:                        0.021449 seconds
+  db_update_perf:                      0.010970 seconds
+  process_perfs_tag:                   0.000074 seconds
+  total_time:                          0.045074 seconds
+Rollup processing end time:    2017-01-25T07:40:46.917422
+---
+
+---
+Worker PID:                    16198
+Message ID:                    1000000356693 (continued)
+Rollup processing start time:  2017-01-25T07:40:46.917484
+Object Type:                   EmsCluster
+Object Name:                   Cluster 1
+Time:                          2017-01-25T06:40:00Z
+Rollup timings:
+  db_find_prev_perf:                   0.005925 seconds
+  rollup_perfs:                        0.020054 seconds
+  db_update_perf:                      0.010316 seconds
+  process_perfs_tag:                   0.000145 seconds
+  total_time:                          0.039118 seconds
+Rollup processing end time:    2017-01-25T07:40:46.956678
 ---
 ...
 ```
