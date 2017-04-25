@@ -78,7 +78,7 @@ Message delivered in:          3.371304091 seconds
 ...
 ```
 
-To extract all C&U hourly and daily rollup timings from the log file, use: ``` ruby hourly_daily_perf_rollup_timings.rb -i evm.log```
+To extract all C&U rollup timings from the log file, use: ``` ruby perf_rollup_timings.rb -i evm.log```
 
 ```
 ...
@@ -107,7 +107,7 @@ Message delivered in:          0.376313023 seconds
 ...
 ```
 
-To extract all C&U realtime rollup timings from the log file, use: ``` ruby realtime_perf_rollup_timings.rb -i evm.log```. Note that several realtime rollups are dispatched by each message
+Note that several realtime rollups are dispatched by each message...
 
 ```
 ...

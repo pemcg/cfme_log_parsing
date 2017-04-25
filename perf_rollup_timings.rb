@@ -38,7 +38,11 @@ def stats (workers, options)
   
   common_non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch,:heartbeat,:server_monitor,:log_active_servers,:worker_monitor,:worker_dequeue]
   hourly_rollup_counters = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time,:process_bottleneck]
-  daily_rollup_counters  = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time]
+  realtime_and_daily_rollup_counters  = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time]
+
+  # realtime:
+  # non_rollup_counters = [:purge_metrics,:server_dequeue,:query_batch,:process_bottleneck,:heartbeat,:server_monitor,:log_active_servers,:worker_monitor,:worker_dequeue]
+  # rollup_counters     = [:db_find_prev_perf,:rollup_perfs,:db_update_perf,:process_perfs_tag,:total_time]
 
   if options[:outputfile]
     o = File.open(options[:outputfile],'w')
@@ -51,19 +55,29 @@ def stats (workers, options)
     messages.each do |rollup|
       o.puts "---"
       o.puts "Worker PID:                    #{pid}"
-      o.puts "Message ID:                    #{rollup[:message_id]}"
-      o.puts "Message fetch time:            #{rollup[:message_time]}"
-      o.puts "Message time in queue:         #{rollup[:message_dequeue_time]} seconds"
+      if rollup[:type] == "realtime"
+        if rollup[:first_rollup_for_message]
+          o.puts "Message ID:                    #{rollup[:message_id]} (new)"
+          o.puts "Message fetch time:            #{rollup[:message_time]}"
+          o.puts "Message time in queue:         #{rollup[:message_dequeue_time]} seconds"
+        else
+          o.puts "Message ID:                    #{rollup[:message_id]} (continued)"
+        end
+      else
+        o.puts "Message ID:                    #{rollup[:message_id]}"
+        o.puts "Message fetch time:            #{rollup[:message_time]}"
+        o.puts "Message time in queue:         #{rollup[:message_dequeue_time]} seconds"
+      end
       o.puts "Rollup processing start time:  #{rollup[:start_time]}"
       o.puts "Object Type:                   #{rollup[:obj_type]}"
       o.puts "Object Name:                   #{rollup[:obj_name]}"
       o.puts "Rollup Type:                   #{rollup[:type]}"
-      if rollup[:type] == "daily"
-        rollup_counters = daily_rollup_counters
-        non_rollup_counters = common_non_rollup_counters + [:process_bottleneck]
-      else
+      if rollup[:type] == "hourly"
         rollup_counters = hourly_rollup_counters
         non_rollup_counters = common_non_rollup_counters
+      else
+        rollup_counters = realtime_and_daily_rollup_counters
+        non_rollup_counters = common_non_rollup_counters + [:process_bottleneck]
       end
       o.puts "Time:                          #{rollup[:time]}"
       o.puts "Rollup timings:"
@@ -79,9 +93,17 @@ def stats (workers, options)
         last_timings = update_timings(last_timings, rollup_timings)
       end
       o.puts "Rollup processing end time:    #{rollup[:end_time]}"
-      o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
-      o.puts "Message state:                 #{rollup[:message_state]}"
-      o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
+      if rollup[:type] == "realtime"
+        if rollup[:last_rollup_for_message]
+          o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
+          o.puts "Message state:                 #{rollup[:message_state]}"
+          o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
+        end
+      else
+        o.puts "Message delivered time:        #{rollup[:message_delivered_time]}"
+        o.puts "Message state:                 #{rollup[:message_state]}"
+        o.puts "Message delivered in:          #{rollup[:message_delivered_in]} seconds"
+      end
       o.puts "---"
       o.puts ""
     end
@@ -111,6 +133,29 @@ get_message_via_drb_re = %r{
                           \ Data:\ \[(?<data>.*)\],
                           \ Args:\ \[(?<args>.*)\],
                           \ Dequeued\ in:\ \[(?<dequeued_in>.+)\]\ seconds$
+                            }x
+
+# [----] I, [2016-12-13T04:44:31.371524 #15020:11e598c]  INFO -- : MIQ(EmsCluster#perf_rollup) [realtime] Rollup for EmsCluster name: [MSSQL], id: [1000000000009] for time: [2016-12-13T03:08:00Z]...
+
+realtime_perf_rollup_start_re = %r{
+                          ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
+                          \ \#(?<pid>\h+):\h+\]
+                          \ .*perf_rollup\)\ \[realtime\]\ Rollup\ for\ (?<obj_type>.+)
+                          \ name:\ \[(?<obj_name>.+?)\],
+                          \ id:\ \[(?<obj_id>\d+)\]
+                          \ for\ time:\ \[(?<time>.+)\]\.\.\.$
+                          }x
+
+# [----] I, [2016-12-13T04:44:31.371524 #15020:11e598c]  INFO -- : MIQ(EmsCluster#perf_rollup) [realtime] Rollup for EmsCluster name: [MSSQL], id: [1000000000009] for time: [2016-12-13T03:08:00Z]...Complete - Timings: {:server_dequeue=>0.0029115676879882812, :db_find_prev_perf=>26.71201252937317, :rollup_perfs=>189.58252334594727, :db_update_perf=>156.7819893360138, :process_perfs_tag=>1.146547555923462, :process_bottleneck=>168.30106329917908, :total_time=>604.6718921661377, :purge_metrics=>12.701744079589844, :query_batch=>0.04195547103881836}
+
+realtime_perf_rollup_complete_re = %r{
+                            ----\]\ I,\ \[(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})
+                            \ \#(?<pid>\h+):\h+\]
+                            \ .*perf_rollup\)\ \[realtime\]\ Rollup\ for\ (?<obj_type>.+)
+                            \ name:\ \[(?<obj_name>.+?)\],
+                            \ id:\ \[(?<obj_id>\d+)\]
+                            \ for\ time:\ \[(?<time>.+)\]\.\.\.Complete\ -
+                            \ Timings: (?<timings>.*$)
                             }x
 
 # [----] I, [2016-12-13T03:56:52.411916 #1439:11e598c]  INFO -- : MIQ(ManageIQ::Providers::Vmware::InfraManager::HostEsx#perf_rollup) [hourly] Rollup for ManageIQ::Providers::Vmware::InfraManager::HostEsx name: [vs3.vi.grp.net - 2], id: [1000000000063] for time: [2016-12-13T01:00:00Z]...
@@ -220,7 +265,39 @@ begin
     if new_message
       messages[new_message[:pid]] = {:timestamp   => new_message[:timestamp], 
                                      :dequeued_in => new_message[:dequeued_in],
-                                     :message_id  => new_message[:message_id]}
+                                     :message_id  => new_message[:message_id],
+                                     :status      => 'new'}
+      next
+    end
+
+    realtime_started = realtime_perf_rollup_start_re.match(line)
+    if realtime_started
+      counter += 1
+      print "Found #{counter} rollups\r"
+      workers[realtime_started[:pid]] = [] unless workers.has_key?(realtime_started[:pid])
+      workers[realtime_started[:pid]] << {:state    => 'realtime_rollup_started', 
+                                        :type       => 'realtime',
+                                        :obj_type   => realtime_started[:obj_type],
+                                        :obj_name   => realtime_started[:obj_name],
+                                        :obj_id     => realtime_started[:obj_id],
+                                        :time       => realtime_started[:time],
+                                        :start_time => realtime_started[:timestamp]}
+      current = workers[realtime_started[:pid]].length - 1
+      if messages.has_key?(realtime_started[:pid])
+        if messages[realtime_started[:pid]][:status] == 'new'
+          workers[realtime_started[:pid]][current][:first_rollup_for_message] = true
+          workers[realtime_started[:pid]][current][:last_rollup_for_message] = false
+          messages[realtime_started[:pid]][:status] = ''
+        else
+          workers[realtime_started[:pid]][current][:first_rollup_for_message] = false
+        end
+        workers[realtime_started[:pid]][current][:message_id] = messages[realtime_started[:pid]][:message_id]
+        workers[realtime_started[:pid]][current][:message_time] = messages[realtime_started[:pid]][:timestamp]
+        workers[realtime_started[:pid]][current][:message_dequeue_time] = messages[realtime_started[:pid]][:dequeued_in]
+      else
+        workers[realtime_started[:pid]][current][:message_time] = "No message found"
+        workers[realtime_started[:pid]][current][:message_dequeue_time] = ""
+      end
       next
     end
 
@@ -274,6 +351,15 @@ begin
       next
     end
 
+    realtime_completed = realtime_perf_rollup_complete_re.match(line)
+    if realtime_completed
+      current = workers[realtime_completed[:pid]].length - 1 rescue next
+      workers[realtime_completed[:pid]][current][:state]    = 'realtime_rollup_completed'
+      workers[realtime_completed[:pid]][current][:end_time] = realtime_completed[:timestamp]
+      workers[realtime_completed[:pid]][current][:timings]  = realtime_completed[:timings]
+      next
+    end
+
     hourly_completed = hourly_perf_rollup_complete_re.match(line)
     if hourly_completed
       current = workers[hourly_completed[:pid]].length - 1 rescue next
@@ -299,6 +385,7 @@ begin
         workers[message_delivered[:pid]][current][:message_delivered_time] = message_delivered[:timestamp]
         workers[message_delivered[:pid]][current][:message_state]          = message_delivered[:state]
         workers[message_delivered[:pid]][current][:message_delivered_in]   = message_delivered[:delivered_in]
+        workers[message_delivered[:pid]][current][:last_rollup_for_message] = true
       end
       next
     end
